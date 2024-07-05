@@ -1,0 +1,83 @@
+clc;
+clear;
+
+fileName_phase = 'Phase.xlsx';
+
+sheet_phase = 'Sheet1';
+
+phase_data = readtable(fileName_phase, 'Sheet', sheet_phase);
+phase_values = table2array(phase_data);
+
+N = size(phase_values, 2);
+k = 2 * pi;
+
+theta_values = 0 + 60 * randn(size(phase_values, 1), 1);
+theta_values = min(max(theta_values, -90), 90);
+
+num_samples = size(phase_values, 1);
+beamwidth_deg = zeros(num_samples, 1);
+peak_value_dB = zeros(num_samples, 1);
+average_sll_dB = zeros(num_samples, 1);
+rms_sll_dB = zeros(num_samples, 1);
+amplitudes_matrix = zeros(num_samples, N);
+
+for i = 1:num_samples
+    amplitudes = randi([0, 10], 1, N) / 10;
+    amplitudes_matrix(i, :) = amplitudes;
+    
+    AF = sum(amplitudes .* exp(1j * (phase_values(i, :)' + k * (0:N-1)' * sind(theta_values(i)))));
+    
+    array_factor_dB = 20 * log10(abs(AF));
+    
+    if length(array_factor_dB) < 3
+        disp('Insufficient data points for peak detection.');
+        continue;
+    end
+
+    main_lobe_indices = find(array_factor_dB >= -4);
+    if ~isempty(main_lobe_indices)
+        beamwidth_deg(i) = theta_values(max(main_lobe_indices)) - theta_values(min(main_lobe_indices));
+    else
+        beamwidth_deg(i) = NaN;
+    end
+
+    if length(array_factor_dB) >= 3
+        peaks = findpeaks(array_factor_dB);
+        sorted_peaks = sort(peaks, 'descend');
+        if length(sorted_peaks) > 1
+            peak_value_dB(i) = 20 * log10(sorted_peaks(2));
+        else
+            peak_value_dB(i) = 20 * log10(sorted_peaks(1));
+        end
+
+        if length(sorted_peaks) > 1
+            sorted_peaks(1) = [];
+            num_peaks = numel(sorted_peaks);
+            sum_peaks = sum(sorted_peaks);
+            average_sll_dB(i) = 20 * log10(sum_peaks / num_peaks);
+        else
+            average_sll_dB(i) = NaN;
+        end
+
+        if ~isempty(sorted_peaks)
+            rms_sll = sqrt(mean(sorted_peaks .^ 2));
+            rms_sll_dB(i) = 20 * log10(rms_sll);
+        else
+            rms_sll_dB(i) = NaN;
+        end
+    else
+        peak_value_dB(i) = NaN;
+        average_sll_dB(i) = NaN;
+        rms_sll_dB(i) = NaN;
+    end
+end
+
+results_table = table(theta_values, amplitudes_matrix, phase_values, beamwidth_deg, peak_value_dB, average_sll_dB, rms_sll_dB);
+writetable(results_table, 'calculated_metrics_with_theta.xlsx');
+
+save('phase_values.mat', 'phase_values');
+save('beamwidth_deg.mat', 'beamwidth_deg');
+save('peak_value_dB.mat', 'peak_value_dB');
+save('average_sll_dB.mat', 'average_sll_dB');
+save('rms_sll_dB.mat', 'rms_sll_dB');
+save('amplitudes_matrix.mat', 'amplitudes_matrix');
